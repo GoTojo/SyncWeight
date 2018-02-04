@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>UploadWeight</title>
+<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/1.9.1/jquery.min.js"></script>
+<script type="text/javascript">
+	function getbwdata(data,threshold) { 
+		let bwdata=[];
+		for (let i=0; i < data.length; i += 4) {
+			bwdata.push((data[i+0]>=threshold.r&&data[i+1]>=threshold.g&&data[i+2]>=threshold.b)?255:0);
+		}
+		return bwdata;
+	}
+	function showdata(target_canvas,srcdata,src_width,x,y,width,height) {
+		target_canvas.width=width;
+		target_canvas.height=height;
+		let context=target_canvas.getContext('2d');
+		let imgData=context.getImageData(0, 0, width, height);
+		var data=imgData.data;
+		for (let line=y; line<y+height; line++) {
+			var index=(src_width*line+x)*4;
+			for (let col=x; col<x+width; col++) {
+				for (let i=0; i<4; i++) {
+					data[index]=srcdata[index];
+					index++;
+				}
+			}
+		}
+        context.putImageData(imgData,0,0);
+	}	
+	function showbwdata(target_canvas,bwdata,src_width,x,y,width,height) {
+		target_canvas.width=width;
+		target_canvas.height=height;
+		let context=target_canvas.getContext('2d');
+		let imgData=context.getImageData(0, 0, width, height);
+		var data=imgData.data;
+		var dstindex=0;
+		for (let line=y; line<y+height; line++) {
+			var srcindex=src_width*line+x;
+			for (let col=x; col<x+width; col++) {
+				data[dstindex]=data[dstindex+1]=data[dstindex+2]=bwdata[srcindex];
+				data[dstindex+3]=255;
+				dstindex+=4;
+				srcindex++;
+			}
+		}
+        context.putImageData(imgData,0,0);
+	}	
+	function getcharrect(bwdata,width,height) {
+		var maxbwratioline=0;
+		for (let line=0; line<height; line++) {
+			var index=line*width;
+			var tmpdata=0;
+			for (let col=0; col<width; col++) {
+				tmpdata+=bwdata[index];
+				index++;
+			}
+			var avg=tmpdata/width;
+			if (maxbwratioline<avg) maxbwratioline=avg;
+		}
+		var boxstartline1=-1;
+		var boxstartline=-1;
+		var boxendline=-1;
+		var threshold=maxbwratioline*0.9;
+		for (let line=0; line<height; line++) {
+			var index=line*width;
+			var tmpdata=0;
+			for (let col=0; col<width; col++) {
+				tmpdata+=bwdata[index];
+				index++;
+			}
+			var avg=tmpdata/width;
+			if (boxstartline1==-1) {
+				if (avg>=threshold) {
+					boxstartline1=line;
+				}
+			} else if (boxstartline==-1) {
+				if (avg<threshold) {
+					boxstartline=line;
+				}
+			} else if (boxendline==-1) {
+				if (avg>=threshold) {
+					boxendline=line;
+					break;
+				}
+			}
+		}
+		var boxstartcol1=-1;
+		var boxstartcol=-1;
+		var boxendcol1=-1;
+		var boxendcol=-1;
+		threshold=255*0.9;
+		var height=boxendline-boxstartline;
+		for (let col=0; col<width; col++) {
+			var tmpdata=0;
+			var index=width*boxstartline+col;
+			for (let line=boxstartline; line<boxendline; line++) {
+				tmpdata+=bwdata[index];
+				index+=width;
+			}
+			var avg=tmpdata/height;
+			if (boxstartcol1==-1) {
+				if (avg>=threshold) {
+					boxstartcol1=col;
+				}
+			} else if (boxstartcol==-1) {
+				if (avg<threshold) {
+					boxstartcol=col;
+					break;
+				}
+			}
+		}
+		for (let col=width; col>=0; col--) {
+			var tmpdata=0;
+			var index=width*boxstartline+col;
+			for (let line=boxstartline; line<boxendline; line++) {
+				tmpdata+=bwdata[index];
+				index+=width;
+			}
+			var avg=tmpdata/height;
+			if (boxendcol1==-1) {
+				if (avg>=threshold) {
+					boxendcol1=col;
+				}
+			} else if (boxendcol==-1) {
+				if (avg<threshold) {
+					boxendcol=col;
+					break;
+				}
+			}
+		}
+		console.log(boxstartcol+','+boxendcol);
+		var width=boxendcol-boxstartcol;
+		return {'x':boxstartcol,'y':boxstartline,'w':width,'h':height};
+	}
+	function getnumber(canvas_s,data,data_w,x,y,w,h) {
+		var e_seg = {
+			a : 0,
+			b : 1,
+			c : 2,
+			d : 3,
+			e : 4,
+			f : 5,
+			g : 6,
+		};
+		var seg_bit = {
+			a : 1<<e_seg.a,
+			b : 1<<e_seg.b,
+			c : 1<<e_seg.c,
+			d : 1<<e_seg.d,
+			e : 1<<e_seg.e,
+			f : 1<<e_seg.f,
+			g : 1<<e_seg.g,			
+		};
+		var bittbl=[
+			seg_bit.a+seg_bit.b+seg_bit.c+seg_bit.d+seg_bit.e+seg_bit.f,			// 0
+			seg_bit.b+seg_bit.c,													// 1
+			seg_bit.a+seg_bit.b+seg_bit.d+seg_bit.e+seg_bit.g,						// 2
+			seg_bit.a+seg_bit.b+seg_bit.c+seg_bit.d+seg_bit.g,						// 3
+			seg_bit.b+seg_bit.c+seg_bit.f+seg_bit.g,								// 4
+			seg_bit.a+seg_bit.c+seg_bit.d+seg_bit.f+seg_bit.g,						// 5
+			seg_bit.a+seg_bit.c+seg_bit.d+seg_bit.e+seg_bit.f+seg_bit.g,			// 6
+			seg_bit.a+seg_bit.b+seg_bit.c,											// 7
+			seg_bit.a+seg_bit.b+seg_bit.c+seg_bit.d+seg_bit.e+seg_bit.f+seg_bit.g,	// 8
+			seg_bit.a+seg_bit.b+seg_bit.c+seg_bit.d+seg_bit.f+seg_bit.g,			// 9
+		];
+		let numofsample=7*4;
+		let sample_w=canvas_s.width;
+		let sample_h=Math.floor(canvas_s.height/numofsample);
+		let context_s=canvas_s.getContext('2d');
+		var num=0;
+		var digit_table=[1000,100,10,1];
+		for (let digit=0; digit<4; digit++) {
+			var bitimage=0;
+			for (let segment=0;segment<7;segment++) {
+				var sample_imgdata=context_s.getImageData(0, sample_h*(digit*7+segment), sample_w, sample_h);
+				var sample_data=sample_imgdata.data;
+				var sample_index=0;
+				var count=0;
+				var hit=0;
+				for (let line=y; line<y+h; line++) {
+					for (let col=x; col<x+w; col++) {
+						if (sample_data[sample_index+3]==255) {
+							count++;
+							if (data[line*data_w+col]==0) {
+								hit++;
+							}
+						}
+						sample_index+=4;
+					}
+				}
+				var ratio=1.0*hit/count;
+				if (ratio>0.5) {
+					bitimage+=1<<(6-segment)
+				}
+				// console.log('digit:'+digit+',segment:'+segment+',count:'+count+',hit:'+hit+',ratio:'+ratio);
+			}
+			for (let i=0; i<=9;i++) {
+				if (bitimage==bittbl[i]) {
+					num+=i*digit_table[digit];
+					break;
+				}
+			}
+		}
+		return num;
+	}
+</script>
+</head>
+<body>
+<video id="video" autoplay playsinline></video>
+<canvas id="canvas_video" hidden='hidden'></canvas>  
+<canvas id="canvas_captured"></canvas>  
+<canvas id="canvas_captured_resize" hidden='hedden'></canvas>  
+<canvas id="canvas_test"></canvas>  
+<canvas id="canvas_sample" hidden='hidden'></canvas>
+<div style='font-size:50px;'>
+<p>体重<input type='text' id='value' style='font-size:50px;'></p>
+<p>ID<input type='text' id='id' style='font-size:50px;'></p>
+<p>PASSWORD<input type='password' id='password' style='font-size:50px;'></p>
+<input type="button" value="send" style='font-size:50px;'></div>
+<script>
+	var front = false;
+	var constraints = {
+		audio: false,
+		video: {
+			width: 640,
+			height: 480,
+			facingMode: (front ? "user" : "environment")
+		}
+	};
+	navigator.mediaDevices.getUserMedia(constraints).then(handleSuccess);
+	function handleSuccess(stream) {
+		let context = canvas_video.getContext('2d');
+		video.srcObject = stream;
+    	video.addEventListener('loadedmetadata', function(){
+    		canvas_video.width = video.videoWidth;
+    		canvas_video.height = video.videoHeight;
+    		(function animation(){
+    			context.drawImage(video, 0, 0);
+    			requestAnimationFrame(animation);
+    		})();
+    	});
+    }
+    $('#video').on('click',function(){
+		getnum(canvas_video,video);
+	});
+	// var captured_img=new Image();
+	// captured_img.src='test.png';
+	// captured_img.onload=function() {
+	// 	let context=canvas_captured.getContext('2d');
+	// 	canvas_captured.width=captured_img.width;
+	// 	canvas_captured.height=captured_img.height;
+	// 	context.drawImage(captured_img,0,0);
+	// 	getnum(canvas_captured,captured_img);
+	// }
+	function getnum(canvas_src,img_src) {
+		var bwthreshold_g=200;
+		var capturedCharRectOrg;
+		{
+			let context=canvas_src.getContext('2d');
+			let imgData=context.getImageData(0, 0, canvas_src.width, canvas_src.height);
+			let bwdata=getbwdata(imgData.data,{'r':0,'g':bwthreshold_g,'b':0});
+			capturedCharRectOrg=getcharrect(bwdata,canvas_src.width, canvas_src.height);
+		}
+		var sample_img=new Image();
+		sample_img.src='sample.png';
+		sample_img.onload=function() {
+			let context_sample=canvas_sample.getContext('2d');
+			canvas_sample.width=sample_img.width;
+			canvas_sample.height=sample_img.height;
+			context_sample.drawImage(sample_img,0,0);
+			let ratio=1.0*canvas_sample.width/capturedCharRectOrg.w;
+			let resized_w=Math.round(canvas_src.width*ratio);
+			let resized_h=Math.round(canvas_src.height*ratio);
+			let context_captured=canvas_captured_resize.getContext('2d');
+			//console.log('captured,org_w:%d,org_h:%d,w:%d,h:%d',canvas_src.width,canvas_src.height,resized_w,resized_h);
+			canvas_captured_resize.width=resized_w;
+			canvas_captured_resize.height=resized_h;
+			context_captured.drawImage(img_src,0,0,resized_w,resized_h);
+			//context_captured.drawImage(video,0,0,resized_w,resized_h);
+			let imgData=context_captured.getImageData(0, 0, resized_w, resized_h);
+			let bwdata=getbwdata(imgData.data,{'r':0,'g':bwthreshold_g,'b':0});
+			//showbwdata(canvas_test,bwdata,resized_w,0,0,resized_w,resized_h);
+			let capturedCharRect=getcharrect(bwdata,resized_w, resized_h);
+			//console.log('rect x:'+capturedCharRect.x+',y:'+capturedCharRect.y+',w:'+capturedCharRect.w+',h:'+capturedCharRect.h);
+			//showbwdata(canvas_test,bwdata,resized_w,capturedCharRect.x,capturedCharRect.y,capturedCharRect.w,capturedCharRect.h);
+			let num=getnumber(canvas_sample,bwdata,resized_w,capturedCharRect.x,capturedCharRect.y,capturedCharRect.w,capturedCharRect.h);
+			console.log('num:'+num);
+			$('#value').val(num);
+		}
+	}
+</script>
+</body>
+</html>
